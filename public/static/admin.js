@@ -71,7 +71,7 @@ function renderLogin() {
     <div class="field"><label>비밀번호</label><input id="ad-pw" type="password" placeholder="••••••••" autocomplete="current-password"></div>
     <div id="ad-err" class="tiny" style="color:#DC2626;min-height:16px;margin-bottom:8px"></div>
     <button class="btn btn-primary btn-block" id="ad-login" style="padding:12px">로그인</button>
-    <p class="tiny" style="text-align:center;margin-top:16px">데모 계정 · admin / admin1234</p>
+    <p class="tiny" style="text-align:center;margin-top:16px">관리자 계정으로 로그인하세요.</p>
   </div></div>`;
 
   const submit = async () => {
