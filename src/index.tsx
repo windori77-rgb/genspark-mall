@@ -3,28 +3,71 @@ import { cors } from 'hono/cors';
 import { secureHeaders } from 'hono/secure-headers';
 import shop from './routes/shop';
 import admin from './routes/admin';
+import { isPreviewEnv, PRODUCTION_URL } from './lib/env';
 
 type Bindings = { DB: D1Database; APP_ENV?: string };
 
 const app = new Hono<{ Bindings: Bindings }>();
 
 app.use('*', secureHeaders({ crossOriginEmbedderPolicy: false }));
+
+/**
+ * ── 프리뷰 → 운영 API 프록시 (근본 해결) ──────────────────────────────
+ *
+ * 프리뷰(샌드박스)와 운영은 물리적으로 다른 DB 를 쓴다. 그래서 프리뷰에서
+ * 만든 주문·회원은 운영 관리자페이지에 절대 보이지 않았다. (3회 반복 원인)
+ *
+ * 경고문을 띄우는 것으로는 부족하므로(무시하고 결제하면 그대로 유실),
+ * 프리뷰 환경의 /api/* 요청을 전부 운영 서버로 전달한다.
+ * → 프리뷰는 "운영 데이터를 그대로 보는 미러"가 되고, 어느 주소에서
+ *   주문하든 동일한 운영 D1 에 저장된다.
+ *
+ * 운영 배포본에서는 isPreviewEnv 가 항상 false 이므로 이 프록시는 동작하지 않는다.
+ */
+app.use('/api/*', async (c, next) => {
+  if (!isPreviewEnv(c.env.APP_ENV, c.req.header('host'))) return next();
+  if (c.req.path === '/api/health') return next(); // 환경 확인용은 로컬에서 응답
+
+  const url = new URL(c.req.url);
+  const headers = new Headers(c.req.raw.headers);
+  headers.delete('host'); // 대상(운영) 호스트를 쓰도록 위임
+  headers.delete('cf-connecting-ip');
+  headers.delete('cf-ray');
+
+  const method = c.req.method.toUpperCase();
+  const hasBody = method !== 'GET' && method !== 'HEAD';
+  const body = hasBody ? await c.req.arrayBuffer() : undefined;
+
+  try {
+    const upstream = await fetch(PRODUCTION_URL + url.pathname + url.search, {
+      method,
+      headers,
+      body: body && body.byteLength ? body : undefined,
+      redirect: 'manual',
+    });
+
+    // 인코딩/길이 헤더는 프록시 과정에서 어긋날 수 있어 제거한다.
+    const out = new Headers(upstream.headers);
+    out.delete('content-encoding');
+    out.delete('content-length');
+    out.delete('transfer-encoding');
+
+    return new Response(upstream.body, { status: upstream.status, headers: out });
+  } catch (e: any) {
+    return c.json(
+      {
+        error: '운영 서버에 연결할 수 없습니다. 잠시 후 다시 시도해주세요.',
+        detail: String(e?.message || e),
+      },
+      503
+    );
+  }
+});
+
 app.use('/api/*', cors({ origin: (o) => o || '*', credentials: true }));
 
 app.route('/api/shop', shop);
 app.route('/api/admin', admin);
-
-/**
- * 프리뷰(개발) 환경 여부.
- * 1) ecosystem.config.cjs 에서 APP_ENV=preview 주입 (샌드박스 미리보기)
- * 2) localhost / 127.0.0.1 로 직접 접속하는 경우
- * 운영(vip.gensparksite.com)에는 APP_ENV 가 없으므로 항상 production 입니다.
- */
-function isPreview(env: string | undefined, host: string | undefined): boolean {
-  if ((env || '').toLowerCase() === 'preview') return true;
-  const h = (host || '').toLowerCase();
-  return h.startsWith('localhost') || h.startsWith('127.0.0.1') || h.startsWith('[::1]');
-}
 
 /** 프리뷰 환경에서만 상단에 표시되는 경고 배너 (운영 DB 오인 방지) */
 function previewBanner(): string {
@@ -33,10 +76,10 @@ background:#1F2430;color:#fff;font:600 12px/1.35 -apple-system,BlinkMacSystemFon
 padding:8px 12px calc(8px + env(safe-area-inset-top,0px));text-align:center;letter-spacing:-.01em;
 box-shadow:0 2px 10px rgba(0,0,0,.28)">
 <span style="color:#FFB020">⚠️ 미리보기 환경</span>
-&nbsp;여기서 한 주문·회원가입은 <b>운영 관리자페이지에 보이지 않습니다.</b>
-<a href="https://19f07bfe-e7de-421b-ae43-9b2da204a8f9.vip.gensparksite.com" target="_blank" rel="noopener"
+&nbsp;주문·회원가입은 <b>운영 데이터베이스에 그대로 저장됩니다.</b> (관리자페이지에 동일하게 표시)
+<a href="${PRODUCTION_URL}" target="_blank" rel="noopener"
  style="display:inline-block;margin-left:6px;background:#FF5A2C;color:#fff;text-decoration:none;
- padding:4px 10px;border-radius:99px;font-weight:800">운영 사이트로 이동 →</a></div>
+ padding:4px 10px;border-radius:99px;font-weight:800">운영 사이트 →</a></div>
 <style>
   body { padding-top: calc(52px + env(safe-area-inset-top, 0px)) !important; }
   /* 관리자: 고정 사이드바 / 스티키 상단바를 배너 아래로 내림 */
@@ -47,20 +90,23 @@ box-shadow:0 2px 10px rgba(0,0,0,.28)">
 </style>`;
 }
 
-app.get('/api/health', (c) =>
-  c.json({
+app.get('/api/health', (c) => {
+  const preview = isPreviewEnv(c.env.APP_ENV, c.req.header('host'));
+  return c.json({
     ok: true,
-    env: isPreview(c.env.APP_ENV, c.req.header('host')) ? 'preview' : 'production',
+    env: preview ? 'preview' : 'production',
+    // 프리뷰는 API 를 운영으로 프록시하므로 데이터는 운영 D1 에 저장된다.
+    dataSource: preview ? 'proxied→production' : 'production',
     ts: new Date().toISOString(),
-  })
-);
+  });
+});
 
 /* ── 고객용 셸 ── */
-app.get('/', (c) => c.html(shopShell(isPreview(c.env.APP_ENV, c.req.header('host')))));
-app.get('/app', (c) => c.html(shopShell(isPreview(c.env.APP_ENV, c.req.header('host')))));
+app.get('/', (c) => c.html(shopShell(isPreviewEnv(c.env.APP_ENV, c.req.header('host')))));
+app.get('/app', (c) => c.html(shopShell(isPreviewEnv(c.env.APP_ENV, c.req.header('host')))));
 
 /* ── 관리자 셸 ── */
-app.get('/admin', (c) => c.html(adminShell(isPreview(c.env.APP_ENV, c.req.header('host')))));
+app.get('/admin', (c) => c.html(adminShell(isPreviewEnv(c.env.APP_ENV, c.req.header('host')))));
 
 /* ── PWA: manifest / service worker 는 동적 생성 (경로 Prefix 회피) ── */
 app.get('/manifest.webmanifest', (c) => {
@@ -112,7 +158,7 @@ button{margin-top:20px;border:0;background:#FF5A2C;color:#fff;font-weight:700;pa
 
 app.notFound((c) => {
   if (c.req.path.startsWith('/api/')) return c.json({ error: 'Not Found' }, 404);
-  return c.html(shopShell(isPreview(c.env.APP_ENV, c.req.header('host'))), 200);
+  return c.html(shopShell(isPreviewEnv(c.env.APP_ENV, c.req.header('host'))), 200);
 });
 
 app.onError((err, c) => {
