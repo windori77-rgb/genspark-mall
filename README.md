@@ -15,6 +15,8 @@
 
 ## 2. 접속 URL
 
+**운영 사이트**: https://19f07bfe-e7de-421b-ae43-9b2da204a8f9.vip.gensparksite.com
+
 | 용도 | 경로 |
 |---|---|
 | 고객용 모바일웹 | `/` 또는 `/app` |
@@ -161,8 +163,11 @@ public/static/
 ## 8. 배포
 
 - **플랫폼**: Cloudflare Workers (Genspark 호스팅)
+- **운영 URL**: https://19f07bfe-e7de-421b-ae43-9b2da204a8f9.vip.gensparksite.com
 - **방법**: `gsk hosted deploy` (D1 자동 프로비저닝)
 - **바인딩**: `DB` (D1) 1개 — KV/크론 미사용
+- **배포 상태**: ✅ 배포 완료 (2026-10-26). D1 자동 초기화 확인: 상품 28 / 카테고리 6 / 쿠폰 3 / 관리자 1
+- **재배포**: 코드 수정 후 `npm run build` → `git commit` → `gsk hosted deploy` (승인 필요)
 
 ## 9. 미구현 / 다음 단계 제안
 
