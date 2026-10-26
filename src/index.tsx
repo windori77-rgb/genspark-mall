@@ -4,7 +4,7 @@ import { secureHeaders } from 'hono/secure-headers';
 import shop from './routes/shop';
 import admin from './routes/admin';
 
-type Bindings = { DB: D1Database };
+type Bindings = { DB: D1Database; APP_ENV?: string };
 
 const app = new Hono<{ Bindings: Bindings }>();
 
@@ -14,14 +14,53 @@ app.use('/api/*', cors({ origin: (o) => o || '*', credentials: true }));
 app.route('/api/shop', shop);
 app.route('/api/admin', admin);
 
-app.get('/api/health', (c) => c.json({ ok: true, ts: new Date().toISOString() }));
+/**
+ * 프리뷰(개발) 환경 여부.
+ * 1) ecosystem.config.cjs 에서 APP_ENV=preview 주입 (샌드박스 미리보기)
+ * 2) localhost / 127.0.0.1 로 직접 접속하는 경우
+ * 운영(vip.gensparksite.com)에는 APP_ENV 가 없으므로 항상 production 입니다.
+ */
+function isPreview(env: string | undefined, host: string | undefined): boolean {
+  if ((env || '').toLowerCase() === 'preview') return true;
+  const h = (host || '').toLowerCase();
+  return h.startsWith('localhost') || h.startsWith('127.0.0.1') || h.startsWith('[::1]');
+}
+
+/** 프리뷰 환경에서만 상단에 표시되는 경고 배너 (운영 DB 오인 방지) */
+function previewBanner(): string {
+  return `<div id="preview-banner" role="alert" style="position:fixed;top:0;left:0;right:0;z-index:99999;
+background:#1F2430;color:#fff;font:600 12px/1.35 -apple-system,BlinkMacSystemFont,system-ui,'Apple SD Gothic Neo',sans-serif;
+padding:8px 12px calc(8px + env(safe-area-inset-top,0px));text-align:center;letter-spacing:-.01em;
+box-shadow:0 2px 10px rgba(0,0,0,.28)">
+<span style="color:#FFB020">⚠️ 미리보기 환경</span>
+&nbsp;여기서 한 주문·회원가입은 <b>운영 관리자페이지에 보이지 않습니다.</b>
+<a href="https://19f07bfe-e7de-421b-ae43-9b2da204a8f9.vip.gensparksite.com" target="_blank" rel="noopener"
+ style="display:inline-block;margin-left:6px;background:#FF5A2C;color:#fff;text-decoration:none;
+ padding:4px 10px;border-radius:99px;font-weight:800">운영 사이트로 이동 →</a></div>
+<style>
+  body { padding-top: calc(52px + env(safe-area-inset-top, 0px)) !important; }
+  /* 관리자: 고정 사이드바 / 스티키 상단바를 배너 아래로 내림 */
+  .sidebar { top: calc(52px + env(safe-area-inset-top, 0px)) !important; }
+  .topbar  { top: calc(52px + env(safe-area-inset-top, 0px)) !important; }
+  /* 부팅 스플래시도 배너를 가리지 않도록 */
+  .boot { inset: calc(52px + env(safe-area-inset-top, 0px)) 0 0 0 !important; }
+</style>`;
+}
+
+app.get('/api/health', (c) =>
+  c.json({
+    ok: true,
+    env: isPreview(c.env.APP_ENV, c.req.header('host')) ? 'preview' : 'production',
+    ts: new Date().toISOString(),
+  })
+);
 
 /* ── 고객용 셸 ── */
-app.get('/', (c) => c.html(shopShell()));
-app.get('/app', (c) => c.html(shopShell()));
+app.get('/', (c) => c.html(shopShell(isPreview(c.env.APP_ENV, c.req.header('host')))));
+app.get('/app', (c) => c.html(shopShell(isPreview(c.env.APP_ENV, c.req.header('host')))));
 
 /* ── 관리자 셸 ── */
-app.get('/admin', (c) => c.html(adminShell()));
+app.get('/admin', (c) => c.html(adminShell(isPreview(c.env.APP_ENV, c.req.header('host')))));
 
 /* ── PWA: manifest / service worker 는 동적 생성 (경로 Prefix 회피) ── */
 app.get('/manifest.webmanifest', (c) => {
@@ -73,7 +112,7 @@ button{margin-top:20px;border:0;background:#FF5A2C;color:#fff;font-weight:700;pa
 
 app.notFound((c) => {
   if (c.req.path.startsWith('/api/')) return c.json({ error: 'Not Found' }, 404);
-  return c.html(shopShell(), 200);
+  return c.html(shopShell(isPreview(c.env.APP_ENV, c.req.header('host'))), 200);
 });
 
 app.onError((err, c) => {
@@ -84,7 +123,7 @@ app.onError((err, c) => {
   return c.text('Internal Server Error', 500);
 });
 
-function shopShell() {
+function shopShell(preview = false) {
   return `<!DOCTYPE html>
 <html lang="ko">
 <head>
@@ -102,6 +141,7 @@ function shopShell() {
 <link rel="stylesheet" href="/static/app.css">
 </head>
 <body>
+${preview ? previewBanner() : ''}
 <div id="root"><div class="boot"><div class="boot-logo">MOA</div><div class="boot-bar"><i></i></div></div></div>
 <noscript>이 서비스를 이용하려면 JavaScript를 활성화해주세요.</noscript>
 <script src="/static/app.js" defer></script>
@@ -109,7 +149,7 @@ function shopShell() {
 </html>`;
 }
 
-function adminShell() {
+function adminShell(preview = false) {
   return `<!DOCTYPE html>
 <html lang="ko">
 <head>
@@ -120,6 +160,7 @@ function adminShell() {
 <link rel="stylesheet" href="/static/admin.css">
 </head>
 <body>
+${preview ? previewBanner() : ''}
 <div id="admin-root"><div class="boot"><div class="boot-logo">MOA<span>ADMIN</span></div><div class="boot-bar"><i></i></div></div></div>
 <script src="/static/admin.js" defer></script>
 </body>
