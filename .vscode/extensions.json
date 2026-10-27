@@ -1,0 +1,26 @@
+{
+  // 이 프로젝트를 열면 VS Code 가 설치를 권장하는 확장 목록.
+  // 알림이 뜨면 "Show Recommendations" 에서 한 번에 설치할 수 있습니다.
+  // ※ 포매터(Prettier)·린터(ESLint)는 이 프로젝트에 설정 파일이 없으므로
+  //    기본값으로 강제하지 않았습니다. 필요하면 직접 설치 후 설정하세요.
+  "recommendations": [
+    // ── Cloudflare Workers / Wrangler ───────────────────
+    "cloudflare.cloudflare-workers-bindings-extension",
+
+    // ── 편의 ────────────────────────────────────────────
+    "christian-kohler.path-intellisense",
+    "formulahendry.auto-rename-tag",
+    "streetsidesoftware.code-spell-checker",
+
+    // ── Git ─────────────────────────────────────────────
+    "eamodio.gitlens",
+    "mhutchie.git-graph",
+
+    // ── REST API 수동 테스트 (docs/api.http) ─────────────
+    "humao.rest-client"
+  ],
+  "unwantedRecommendations": [
+    // 워크스페이스 TS 버전과 충돌할 수 있음
+    "ms-vscode.vscode-typescript-next"
+  ]
+}

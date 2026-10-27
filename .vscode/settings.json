@@ -1,0 +1,50 @@
+{
+  // ── 편집기 ────────────────────────────────────────────────
+  "editor.tabSize": 2,
+  "editor.insertSpaces": true,
+  "editor.rulers": [100],
+  "files.eol": "\n",
+  "files.trimTrailingWhitespace": true,
+  "files.insertFinalNewline": true,
+
+  // ── 파일 탐색기: 빌드 산출물/의존성 숨김 ──────────────────
+  "files.exclude": {
+    "**/node_modules": true,
+    "**/dist": true,
+    "**/.wrangler": true
+  },
+  "search.exclude": {
+    "**/node_modules": true,
+    "**/dist": true,
+    "**/.wrangler": true,
+    "**/package-lock.json": true,
+    "**/worker-configuration.d.ts": true
+  },
+
+  // ── TypeScript ───────────────────────────────────────────
+  // 워크스페이스에 설치된 TS(5.9)를 사용해야 wrangler 가 생성한
+  // worker-configuration.d.ts 와 타입 버전이 어긋나지 않는다.
+  "typescript.tsdk": "node_modules/typescript/lib",
+  "typescript.enablePromptUseWorkspaceTsdk": true,
+  "typescript.preferences.importModuleSpecifier": "relative",
+  "typescript.updateImportsOnFileMove.enabled": "always",
+  "typescript.suggest.autoImports": true,
+
+  // ── CSS ──────────────────────────────────────────────────
+  // 순수 CSS 사용 (Tailwind 는 CDN). HTML 인라인 스크립트 검사는 끈다.
+  "css.validate": true,
+  "html.validate.scripts": false,
+
+  // ── 터미널 ───────────────────────────────────────────────
+  "terminal.integrated.defaultProfile.linux": "bash",
+  "terminal.integrated.defaultProfile.osx": "zsh",
+  "terminal.integrated.defaultProfile.windows": "PowerShell",
+  "terminal.integrated.cwd": "${workspaceFolder}",
+
+  // ── 기타 ─────────────────────────────────────────────────
+  "emmet.includeLanguages": {
+    "typescript": "html"
+  },
+  "workbench.editor.enablePreview": true,
+  "diffEditor.ignoreTrimWhitespace": false
+}

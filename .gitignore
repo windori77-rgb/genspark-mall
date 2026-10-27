@@ -4,12 +4,26 @@ dist/
 # dev
 .yarn/
 !.yarn/releases
+
+# IDE — VS Code 설정은 팀 공유용으로 커밋한다
 .vscode/*
+!.vscode/settings.json
 !.vscode/launch.json
+!.vscode/tasks.json
+!.vscode/extensions.json
 !.vscode/*.code-snippets
-.idea/workspace.xml
-.idea/usage.statistics.xml
-.idea/shelf
+# IntelliJ / Eclipse / NetBeans 개인 설정은 커밋하지 않는다
+.idea/
+*.iml
+*.ipr
+*.iws
+.classpath
+.project
+.settings/
+.factorypath
+.apt_generated/
+out/
+bin/
 
 # deps
 node_modules/
@@ -31,3 +45,4 @@ lerna-debug.log*
 
 # misc
 .DS_Store
+Thumbs.db

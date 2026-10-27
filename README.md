@@ -186,6 +186,7 @@ src/
   index.tsx        Hono 엔트리 (셸 HTML · manifest · service worker · offline)
   routes/shop.ts   고객 API
   routes/admin.ts  관리자 API
+  lib/env.ts       환경 판정 (production / preview / local)
   lib/schema.ts    D1 스키마 DDL
   lib/seed.ts      샘플 데이터(상품 28 · 카테고리 6 · 쿠폰 3 · 리뷰 12)
   lib/auth.ts      PBKDF2 해시 · 세션 쿠키 · 주문번호 생성
@@ -195,7 +196,98 @@ public/static/
   admin.css admin.js     관리자
   icons/                 PWA 아이콘
   img/                   샘플 상품 이미지 22장
+scripts/
+  deploy-guard.mjs       `npm run deploy` 오배포 방지 가드
+docs/
+  api.http               REST Client 로 API 수동 테스트
+.vscode/                 VS Code 설정 (settings/launch/tasks/extensions)
 ```
+
+---
+
+## 7-1. VS Code 로컬 개발 환경 (노트북)
+
+### 사전 준비
+
+| 항목 | 요구 사항 | 확인 |
+|---|---|---|
+| Node.js | **22.12.0 이상** (`.nvmrc` = 22) | `node -v` |
+| Git | 최신 | `git --version` |
+| VS Code | 최신 | — |
+
+> ⚠️ Node 20 초반/18 에서는 `vite 8` · `wrangler 4` 가 설치 단계에서 실패합니다.
+> `nvm install 22 && nvm use 22` 로 맞춰주세요.
+
+### 시작하기
+
+```bash
+git clone https://github.com/windori77-rgb/genspark-mall.git
+cd genspark-mall
+npm install
+code .                      # VS Code 로 열기
+```
+
+VS Code 가 열리면 우측 하단에 **추천 확장 설치** 알림이 뜹니다 → `Install All`.
+
+### 실행 (F5 또는 터미널)
+
+| 방법 | 명령 | DB | 안전도 |
+|---|---|---|---|
+| **터미널** | `npm run dev` | 로컬 SQLite | ✅ 안전 |
+| **디버거 ①** | F5 → `① dev (로컬 DB · 안전)` | 로컬 SQLite | ✅ 안전 |
+| **디버거 ②** | F5 → `② preview (wrangler · 로컬 D1)` | 로컬 SQLite | ✅ 안전 |
+| **타입 검사** | `npm run typecheck` | — | — |
+| **빌드** | `npm run build` | — | — |
+
+브라우저에서 `http://localhost:5173` 접속 → `/api/health` 가 아래처럼 나오면 정상:
+
+```json
+{ "ok": true, "env": "local", "dataSource": "local-sqlite" }
+```
+
+### 🔒 운영 데이터 보호 장치
+
+`src/lib/env.ts` 의 `isPreviewEnv()` 는 **호스트를 보고 환경을 판정**합니다.
+
+| 접속 호스트 | 판정 | `/api/*` 동작 | 사용 DB |
+|---|---|---|---|
+| `localhost:5173` (노트북) | `local` | 프록시 **안 함** | **내 PC 로컬 SQLite** |
+| `...sandbox.novita.ai` (샌드박스) | `preview` | **운영으로 프록시** | 운영 D1 미러 |
+| `...vip.gensparksite.com` (운영) | `production` | 프록시 안 함 | 운영 D1 |
+
+**즉, 노트북에서 상품을 지우거나 주문을 만들어도 실제 운영 서비스는 전혀 영향받지 않습니다.**
+이건 의도된 설계입니다 — 이 프로젝트는 과거에 "프리뷰에서 만든 주문이 운영 관리자페이지에 안 보이는" 사고를 겪었고, 그 해결책이 프록시이기 때문입니다.
+
+로컬 DB 는 `npm install` 후 **첫 요청 시 자동 생성**됩니다 (스키마·샘플 28개 상품 자동 시딩).
+
+```bash
+# 로컬 DB 직접 확인
+npx wrangler d1 execute webapp-production --local --command="SELECT COUNT(*) FROM products"
+
+# 로컬 DB 초기화 (스키마까지 다시 생성)
+npm run clean && npm run build
+```
+
+### ⛔ 절대 하지 말 것
+
+```bash
+npm run deploy          # → 차단됨 (deploy-guard 가 안내 후 종료)
+npx wrangler pages deploy   # → 고객님 개인 CF 계정으로 유령 배포됨
+```
+
+이 프로젝트의 운영 배포는 **Genspark 호스팅**입니다. 배포가 필요하면 커밋·push 후
+Genspark 에이전트에게 **"배포해줘"** 라고 요청하세요 (승인 배너 → 승인 → 반영).
+
+### IntelliJ / Eclipse 로 열 때
+
+| IDE | 가능 여부 | 비고 |
+|---|---|---|
+| IntelliJ IDEA **Ultimate** | ✅ | TS/JS 완전 지원 |
+| IntelliJ IDEA **Community** | ❌ | **JS/TS 미지원** (Ultimate 전용 기능) |
+| Eclipse | △ | `Wild Web Developer` 플러그인 필요, 권장하지 않음 |
+
+`.idea/`, `.classpath`, `.project`, `.settings/`, `out/`, `bin/` 는 `.gitignore` 에 등록되어 있어
+개인 IDE 설정이 저장소에 섞이지 않습니다.
 
 ## 8. 배포
 

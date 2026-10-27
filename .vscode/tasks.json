@@ -1,0 +1,66 @@
+{
+  "version": "2.0.0",
+  "tasks": [
+    {
+      "label": "build",
+      "type": "npm",
+      "script": "build",
+      "group": { "kind": "build", "isDefault": true },
+      "problemMatcher": ["$tsc"],
+      "detail": "vite build → dist/_worker.js"
+    },
+    {
+      "label": "typecheck",
+      "type": "npm",
+      "script": "typecheck",
+      "group": "test",
+      "problemMatcher": ["$tsc"],
+      "detail": "tsc --noEmit (타입 오류만 검사)"
+    },
+    {
+      "label": "dev (로컬 DB)",
+      "type": "npm",
+      "script": "dev",
+      "isBackground": true,
+      "problemMatcher": [],
+      "detail": "localhost 접속 → 로컬 SQLite 사용. 운영 DB에 영향 없음 (권장)"
+    },
+    {
+      "label": "preview (wrangler)",
+      "type": "npm",
+      "script": "preview",
+      "isBackground": true,
+      "problemMatcher": [],
+      "detail": "빌드 결과물을 실제 Workers 런타임(miniflare)에서 실행"
+    },
+    {
+      "label": "cf-typegen",
+      "type": "npm",
+      "script": "cf-typegen",
+      "problemMatcher": [],
+      "detail": "wrangler.jsonc 변경 후 실행 → worker-configuration.d.ts 재생성"
+    },
+    {
+      "label": "clean",
+      "type": "npm",
+      "script": "clean",
+      "problemMatcher": [],
+      "detail": "dist/, .wrangler/ 삭제 (로컬 DB도 함께 삭제됨)"
+    },
+    {
+      "label": "git: commit & push",
+      "type": "shell",
+      "command": "git add -A && git commit -m \"${input:commitMessage}\" && git push origin main",
+      "problemMatcher": [],
+      "detail": "변경사항 커밋 후 GitHub 로 push (SB-Git 은 턴 종료 시 자동)"
+    }
+  ],
+  "inputs": [
+    {
+      "id": "commitMessage",
+      "type": "promptString",
+      "description": "커밋 메시지를 입력하세요",
+      "default": "update"
+    }
+  ]
+}

@@ -3,7 +3,13 @@ import { cors } from 'hono/cors';
 import { secureHeaders } from 'hono/secure-headers';
 import shop from './routes/shop';
 import admin from './routes/admin';
-import { isPreviewEnv, PRODUCTION_URL } from './lib/env';
+import {
+  isPreviewEnv,
+  resolveEnvName,
+  resolveDataSource,
+  PRODUCTION_URL,
+  type AppEnv,
+} from './lib/env';
 
 type Bindings = { DB: D1Database; APP_ENV?: string };
 
@@ -69,14 +75,26 @@ app.use('/api/*', cors({ origin: (o) => o || '*', credentials: true }));
 app.route('/api/shop', shop);
 app.route('/api/admin', admin);
 
-/** 프리뷰 환경에서만 상단에 표시되는 경고 배너 (운영 DB 오인 방지) */
-function previewBanner(): string {
+/**
+ * 환경 안내 배너.
+ *  - preview(샌드박스): API 가 운영으로 프록시되므로 "운영 DB에 저장됨"을 경고
+ *  - local(노트북): 로컬 SQLite 를 쓰므로 "운영에 영향 없음"을 안내 (빨간 경고 아님)
+ * 운영 배포본에서는 두 경우 모두 렌더되지 않는다.
+ */
+function previewBanner(kind: AppEnv = 'preview'): string {
+  const isLocal = kind === 'local';
+  const accent = isLocal ? '#2B7FFF' : '#FFB020';
+  const title = isLocal ? '🧪 로컬 개발 환경' : '⚠️ 미리보기 환경';
+  const body = isLocal
+    ? '주문·회원가입은 <b>내 PC 의 로컬 DB에만 저장됩니다.</b> (운영 데이터에 영향 없음)'
+    : '주문·회원가입은 <b>운영 데이터베이스에 그대로 저장됩니다.</b> (관리자페이지에 동일하게 표시)';
+
   return `<div id="preview-banner" role="alert" style="position:fixed;top:0;left:0;right:0;z-index:99999;
 background:#1F2430;color:#fff;font:600 12px/1.35 -apple-system,BlinkMacSystemFont,system-ui,'Apple SD Gothic Neo',sans-serif;
 padding:8px 12px calc(8px + env(safe-area-inset-top,0px));text-align:center;letter-spacing:-.01em;
 box-shadow:0 2px 10px rgba(0,0,0,.28)">
-<span style="color:#FFB020">⚠️ 미리보기 환경</span>
-&nbsp;주문·회원가입은 <b>운영 데이터베이스에 그대로 저장됩니다.</b> (관리자페이지에 동일하게 표시)
+<span style="color:${accent}">${title}</span>
+&nbsp;${body}
 <a href="${PRODUCTION_URL}" target="_blank" rel="noopener"
  style="display:inline-block;margin-left:6px;background:#FF5A2C;color:#fff;text-decoration:none;
  padding:4px 10px;border-radius:99px;font-weight:800">운영 사이트 →</a></div>
@@ -90,23 +108,34 @@ box-shadow:0 2px 10px rgba(0,0,0,.28)">
 </style>`;
 }
 
+/** 현재 요청의 환경 (production | preview | local) */
+function envOf(c: any): AppEnv {
+  return resolveEnvName(c.env.APP_ENV, c.req.header('host'));
+}
+
+/** 배너가 필요한 환경이면 배너 HTML, 아니면 빈 문자열 */
+function bannerFor(c: any): string {
+  const e = envOf(c);
+  return e === 'production' ? '' : previewBanner(e);
+}
+
 app.get('/api/health', (c) => {
-  const preview = isPreviewEnv(c.env.APP_ENV, c.req.header('host'));
+  const env = envOf(c);
   return c.json({
     ok: true,
-    env: preview ? 'preview' : 'production',
-    // 프리뷰는 API 를 운영으로 프록시하므로 데이터는 운영 D1 에 저장된다.
-    dataSource: preview ? 'proxied→production' : 'production',
+    env,
+    // preview=운영 미러 / local=내 PC 로컬 DB / production=운영 D1
+    dataSource: resolveDataSource(c.env.APP_ENV, c.req.header('host')),
     ts: new Date().toISOString(),
   });
 });
 
 /* ── 고객용 셸 ── */
-app.get('/', (c) => c.html(shopShell(isPreviewEnv(c.env.APP_ENV, c.req.header('host')))));
-app.get('/app', (c) => c.html(shopShell(isPreviewEnv(c.env.APP_ENV, c.req.header('host')))));
+app.get('/', (c) => c.html(shopShell(bannerFor(c))));
+app.get('/app', (c) => c.html(shopShell(bannerFor(c))));
 
 /* ── 관리자 셸 ── */
-app.get('/admin', (c) => c.html(adminShell(isPreviewEnv(c.env.APP_ENV, c.req.header('host')))));
+app.get('/admin', (c) => c.html(adminShell(bannerFor(c))));
 
 /* ── PWA: manifest / service worker 는 동적 생성 (경로 Prefix 회피) ── */
 app.get('/manifest.webmanifest', (c) => {
@@ -158,7 +187,7 @@ button{margin-top:20px;border:0;background:#FF5A2C;color:#fff;font-weight:700;pa
 
 app.notFound((c) => {
   if (c.req.path.startsWith('/api/')) return c.json({ error: 'Not Found' }, 404);
-  return c.html(shopShell(isPreviewEnv(c.env.APP_ENV, c.req.header('host'))), 200);
+  return c.html(shopShell(bannerFor(c)), 200);
 });
 
 app.onError((err, c) => {
@@ -169,7 +198,7 @@ app.onError((err, c) => {
   return c.text('Internal Server Error', 500);
 });
 
-function shopShell(preview = false) {
+function shopShell(banner = '') {
   return `<!DOCTYPE html>
 <html lang="ko">
 <head>
@@ -187,7 +216,7 @@ function shopShell(preview = false) {
 <link rel="stylesheet" href="/static/app.css">
 </head>
 <body>
-${preview ? previewBanner() : ''}
+${banner}
 <div id="root"><div class="boot"><div class="boot-logo">MOA</div><div class="boot-bar"><i></i></div></div></div>
 <noscript>이 서비스를 이용하려면 JavaScript를 활성화해주세요.</noscript>
 <script src="/static/app.js" defer></script>
@@ -195,7 +224,7 @@ ${preview ? previewBanner() : ''}
 </html>`;
 }
 
-function adminShell(preview = false) {
+function adminShell(banner = '') {
   return `<!DOCTYPE html>
 <html lang="ko">
 <head>
@@ -206,7 +235,7 @@ function adminShell(preview = false) {
 <link rel="stylesheet" href="/static/admin.css">
 </head>
 <body>
-${preview ? previewBanner() : ''}
+${banner}
 <div id="admin-root"><div class="boot"><div class="boot-logo">MOA<span>ADMIN</span></div><div class="boot-bar"><i></i></div></div></div>
 <script src="/static/admin.js" defer></script>
 </body>
