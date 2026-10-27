@@ -3,13 +3,7 @@ import { cors } from 'hono/cors';
 import { secureHeaders } from 'hono/secure-headers';
 import shop from './routes/shop';
 import admin from './routes/admin';
-import {
-  isPreviewEnv,
-  resolveEnvName,
-  resolveDataSource,
-  PRODUCTION_URL,
-  type AppEnv,
-} from './lib/env';
+import { resolveEnvName, resolveDataSource, PRODUCTION_URL, type AppEnv } from './lib/env';
 
 type Bindings = { DB: D1Database; APP_ENV?: string };
 
@@ -18,57 +12,20 @@ const app = new Hono<{ Bindings: Bindings }>();
 app.use('*', secureHeaders({ crossOriginEmbedderPolicy: false }));
 
 /**
- * ── 프리뷰 → 운영 API 프록시 (근본 해결) ──────────────────────────────
+ * ── 환경별 DB 완전 분리 ────────────────────────────────────────────────
  *
- * 프리뷰(샌드박스)와 운영은 물리적으로 다른 DB 를 쓴다. 그래서 프리뷰에서
- * 만든 주문·회원은 운영 관리자페이지에 절대 보이지 않았다. (3회 반복 원인)
+ * 각 환경은 **자기 DB만** 사용하며 서로 섞이지 않는다.
  *
- * 경고문을 띄우는 것으로는 부족하므로(무시하고 결제하면 그대로 유실),
- * 프리뷰 환경의 /api/* 요청을 전부 운영 서버로 전달한다.
- * → 프리뷰는 "운영 데이터를 그대로 보는 미러"가 되고, 어느 주소에서
- *   주문하든 동일한 운영 D1 에 저장된다.
+ *   production  ...vip.gensparksite.com  → Cloudflare D1 (운영)
+ *   preview     ...sandbox.novita.ai     → 샌드박스 로컬 SQLite
+ *   local       localhost:5173 (노트북)   → 노트북 로컬 SQLite
  *
- * 운영 배포본에서는 isPreviewEnv 가 항상 false 이므로 이 프록시는 동작하지 않는다.
+ * ⚠️ 과거에는 프리뷰의 /api/* 를 운영 서버로 프록시했다.
+ *    그 결과 "샌드박스에서 저장하면 운영 DB 에 저장되는" 문제가 있었다.
+ *    프록시를 제거했으므로 샌드박스의 쓰기는 운영에 절대 닿지 않는다.
+ *
+ *    운영 데이터는 운영 URL 에서만 변경된다.
  */
-app.use('/api/*', async (c, next) => {
-  if (!isPreviewEnv(c.env.APP_ENV, c.req.header('host'))) return next();
-  if (c.req.path === '/api/health') return next(); // 환경 확인용은 로컬에서 응답
-
-  const url = new URL(c.req.url);
-  const headers = new Headers(c.req.raw.headers);
-  headers.delete('host'); // 대상(운영) 호스트를 쓰도록 위임
-  headers.delete('cf-connecting-ip');
-  headers.delete('cf-ray');
-
-  const method = c.req.method.toUpperCase();
-  const hasBody = method !== 'GET' && method !== 'HEAD';
-  const body = hasBody ? await c.req.arrayBuffer() : undefined;
-
-  try {
-    const upstream = await fetch(PRODUCTION_URL + url.pathname + url.search, {
-      method,
-      headers,
-      body: body && body.byteLength ? body : undefined,
-      redirect: 'manual',
-    });
-
-    // 인코딩/길이 헤더는 프록시 과정에서 어긋날 수 있어 제거한다.
-    const out = new Headers(upstream.headers);
-    out.delete('content-encoding');
-    out.delete('content-length');
-    out.delete('transfer-encoding');
-
-    return new Response(upstream.body, { status: upstream.status, headers: out });
-  } catch (e: any) {
-    return c.json(
-      {
-        error: '운영 서버에 연결할 수 없습니다. 잠시 후 다시 시도해주세요.',
-        detail: String(e?.message || e),
-      },
-      503
-    );
-  }
-});
 
 app.use('/api/*', cors({ origin: (o) => o || '*', credentials: true }));
 
@@ -77,17 +34,17 @@ app.route('/api/admin', admin);
 
 /**
  * 환경 안내 배너.
- *  - preview(샌드박스): API 가 운영으로 프록시되므로 "운영 DB에 저장됨"을 경고
- *  - local(노트북): 로컬 SQLite 를 쓰므로 "운영에 영향 없음"을 안내 (빨간 경고 아님)
+ *  - preview(샌드박스): 자기 로컬 DB 를 쓰므로 "운영과 분리됨"을 안내
+ *  - local(노트북):     자기 로컬 DB 를 쓰므로 "운영에 영향 없음"을 안내
  * 운영 배포본에서는 두 경우 모두 렌더되지 않는다.
  */
 function previewBanner(kind: AppEnv = 'preview'): string {
   const isLocal = kind === 'local';
-  const accent = isLocal ? '#2B7FFF' : '#FFB020';
-  const title = isLocal ? '🧪 로컬 개발 환경' : '⚠️ 미리보기 환경';
+  const accent = isLocal ? '#2B7FFF' : '#8B5CF6';
+  const title = isLocal ? '🧪 로컬 개발 환경' : '🧪 샌드박스 (테스트) 환경';
   const body = isLocal
     ? '주문·회원가입은 <b>내 PC 의 로컬 DB에만 저장됩니다.</b> (운영 데이터에 영향 없음)'
-    : '주문·회원가입은 <b>운영 데이터베이스에 그대로 저장됩니다.</b> (관리자페이지에 동일하게 표시)';
+    : '주문·회원가입은 <b>샌드박스 전용 DB에만 저장됩니다.</b> (운영 데이터에 영향 없음)';
 
   return `<div id="preview-banner" role="alert" style="position:fixed;top:0;left:0;right:0;z-index:99999;
 background:#1F2430;color:#fff;font:600 12px/1.35 -apple-system,BlinkMacSystemFont,system-ui,'Apple SD Gothic Neo',sans-serif;
