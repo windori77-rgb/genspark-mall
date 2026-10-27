@@ -11,6 +11,8 @@
       "request": "launch",
       "runtimeExecutable": "npm",
       "runtimeArgs": ["run", "dev"],
+      // Windows 에서는 npm 이 npm.cmd 셔틀(.cmd)이라 그대로는 못 찾는 경우가 있다.
+      "windows": { "runtimeExecutable": "npm.cmd" },
       "console": "integratedTerminal",
       "serverReadyAction": {
         "pattern": "Local:\\s+(https?://[^\\s]+)",
@@ -32,6 +34,7 @@
         "--d1=webapp-production", "--local",
         "--ip", "127.0.0.1", "--port", "8788"
       ],
+      "windows": { "runtimeExecutable": "npx.cmd" },
       "console": "integratedTerminal",
       "preLaunchTask": "build",
       "skipFiles": ["<node_internals>/**"]
