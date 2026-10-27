@@ -257,6 +257,153 @@ VS Code 가 열리면 우측 하단에 **추천 확장 설치** 알림이 뜹니
 { "ok": true, "env": "local", "dataSource": "local-sqlite" }
 ```
 
+### 🔄 GitHub 동기화 (commit · push · pull)
+
+노트북 VS Code 에서 코드를 고치고 GitHub 에 올리는 전체 절차입니다.
+**주 저장소는 GitHub 하나입니다** (`origin` = `windori77-rgb/genspark-mall`).
+
+#### 1단계. 최초 1회 — 인증 설정
+
+`git clone` 은 이 저장소가 **public** 이라 인증 없이 됩니다.
+하지만 **push 는 반드시 인증이 필요**합니다. 아래 중 하나를 하세요.
+
+**방법 A — Git Credential Manager (가장 쉬움, Windows 권장)**
+
+```bash
+git config --global credential.helper manager
+```
+
+이후 `git push` 시 뜨는 브라우저 창에서 GitHub 로그인하면 토큰이 자동 저장됩니다.
+다음부터는 아무것도 묻지 않습니다.
+
+**방법 B — Personal Access Token (PAT)**
+
+GitHub 은 2021년부터 **계정 비밀번호 push 를 거부**합니다. 토큰만 됩니다.
+
+1. GitHub → 우상단 프로필 → **Settings**
+2. 좌측 맨 아래 **Developer settings**
+3. **Personal access tokens → Tokens (classic) → Generate new token (classic)**
+4. 입력:
+   - **Note**: `vscode-laptop`
+   - **Expiration**: 원하는 기간
+   - **Scopes**: ✅ **`repo`** (전체 체크)
+5. **Generate token** → `ghp_...` **즉시 복사** (다시 볼 수 없음)
+
+```bash
+# 토큰을 자격증명 저장소에 등록 (아이디는 본인 GitHub 아이디)
+git config --global credential.helper store
+```
+
+이후 첫 `git push` 에서:
+| 항목 | 입력값 |
+|---|---|
+| Username | GitHub **아이디** (이메일 아님) |
+| Password | **`ghp_...` 토큰** (계정 비밀번호 ❌) |
+
+> 🔒 토큰은 비밀번호와 동급입니다. 채팅·이슈·코드에 절대 붙여넣지 마세요.
+> 노출됐다면 Settings → Developer settings → 해당 토큰 **Delete** 후 재발급.
+
+**방법 C — GitHub CLI (선택)**
+
+```bash
+gh auth login        # 브라우저로 인증, git 설정까지 자동 구성
+```
+
+#### 2단계. GitHub 저장소 받기 (최초 1회)
+
+```bash
+git clone https://github.com/windori77-rgb/genspark-mall.git
+cd genspark-mall
+npm install
+code .
+```
+
+#### 3단계. 코드 수정 후 올리기 (push)
+
+**VS Code UI 방법**
+
+| 단계 | 위치 | 동작 |
+|---|---|---|
+| ① 변경 확인 | 좌측 **Source Control** (`Ctrl+Shift+G`) | 수정 파일 목록 표시 |
+| ② 스테이징 | 파일 옆 **`+`** | 또는 `Changes` 옆 `+` 로 전체 |
+| ③ 메시지 입력 | 상단 입력창 | 예: `fix: 장바구니 합계 오류` |
+| ④ 커밋 | **✓ Commit** | (`Ctrl+Enter`) |
+| ⑤ 푸시 | **Sync Changes** 또는 **⋯ → Push** | GitHub 에 반영 |
+| ⑥ 확인 | GitHub 웹에서 커밋 확인 | — |
+
+**터미널 방법**
+
+```bash
+git status                       # 무엇이 바뀌었나
+git add -A                       # 전체 스테이징
+git commit -m "fix: 장바구니 합계 오류"
+git push origin main             # GitHub 로 전송
+```
+
+**VS Code 작업(task)으로 한 번에**
+
+`Ctrl+Shift+P` → **`Tasks: Run Task`** → **`git: commit & push`**
+커밋 메시지를 물어보고 `add -A → commit → push` 를 자동 실행합니다.
+
+#### 4단계. 최신 코드 받기 (pull)
+
+샌드박스(제가 작업한 것)를 노트북으로 가져올 때:
+
+```bash
+git pull origin main
+```
+
+VS Code UI: **Source Control** → **⋯** → **Pull**
+
+> ⚠️ 로컬에 커밋하지 않은 변경이 있으면 pull 이 거부됩니다.
+> 먼저 커밋하거나 `git stash` 후 pull → `git stash pop` 하세요.
+
+#### 빠른 참조 명령
+
+| 목적 | 명령 |
+|---|---|
+| 상태 확인 | `git status` |
+| 변경 내용 보기 | `git diff` |
+| 전체 올리기 | `git add -A && git commit -m "메시지" && git push origin main` |
+| 최신 받기 | `git pull origin main` |
+| 커밋 이력 | `git log --oneline -10` |
+| 마지막 커밋 취소 (변경 유지) | `git reset --soft HEAD~1` |
+| 원격 주소 확인 | `git remote -v` |
+
+#### ⚠️ push 해도 운영 사이트는 바뀌지 않습니다
+
+이 프로젝트의 **배포는 GitHub 가 아니라 Genspark 호스팅**이 담당합니다.
+
+```
+노트북 VS Code ──push──▶ GitHub ──(agent pull)──▶ 샌드박스
+                                                    │
+                                      gsk hosted deploy (승인)
+                                                    ▼
+                                               운영 사이트
+```
+
+**운영 반영 순서**
+1. 노트북에서 `git push origin main`
+2. Genspark 에이전트에게 **"GitHub 에서 pull 받아서 배포해줘"** 요청
+3. 승인 배너 → 승인 → 운영 반영
+
+#### 자주 겪는 오류
+
+| 증상 | 원인 | 해결 |
+|---|---|---|
+| `'git' 용어가 ... 인식되지 않습니다` | Git 미설치 | `winget install Git.Git` 후 **VS Code 완전 재시작** |
+| `Can't find Node.js binary "npm"` | Node 미설치 | Node 22 LTS 설치 후 VS Code 재시작 |
+| `npm.ps1 파일을 로드할 수 없습니다` | PowerShell 실행 정책 | `Set-ExecutionPolicy -Scope CurrentUser RemoteSigned` |
+| `Authentication failed` 반복 | 옛 자격증명 캐시 | Windows **자격 증명 관리자** → `git:https://github.com` 삭제 후 재시도 |
+| `Support for password authentication was removed` | 계정 비밀번호 사용 | **PAT(`ghp_...`)로 교체** |
+| `403 Forbidden` | 토큰 스코프 `repo` 누락 | 토큰 재발급 |
+| `! [rejected] main -> main (fetch first)` | 원격이 더 최신 | `git pull origin main --rebase` 후 다시 push |
+| `Your local changes would be overwritten` | 커밋 안 된 변경과 충돌 | 커밋 → `git pull --rebase` → `git push` |
+| `fatal: not a git repository` | 상위 폴더에서 실행 | `cd` 로 프로젝트 루트로 이동 |
+| `src refspec main does not match any` | 커밋이 없음 | `git add -A && git commit -m "init"` |
+| VS Code 가 변경을 안 보여줌 | 저장 안 됨 / 다른 폴더 열림 | `Ctrl+S` → 좌측 하단 폴더 경로 확인 |
+| 커밋 작성자 오류 | user.name/email 미설정 | `git config --global user.name "이름"` / `user.email "메일"` |
+
 ### 🔒 운영 데이터 보호 장치
 
 `src/lib/env.ts` 의 `resolveEnvName()` 은 **요청 호스트만 보고 환경을 판정**합니다.
