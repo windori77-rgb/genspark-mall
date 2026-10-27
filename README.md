@@ -16,16 +16,7 @@
 ## 2. 접속 URL
 
 **운영 사이트**: https://19f07bfe-e7de-421b-ae43-9b2da204a8f9.vip.gensparksite.com
-**주 저장소 (GitLab)**: `https://gitlab.com/<본인아이디>/genspark-mall` — 전환 절차: [docs/gitlab-primary.md](docs/gitlab-primary.md)
-**미러 (GitHub)**: https://github.com/windori77-rgb/genspark-mall
-
-### 저장소 역할
-
-| 원격 | 저장소 | 역할 |
-|---|---|---|
-| `origin` | **GitLab** | **주 저장소 (Source of Truth)** |
-| `github` | GitHub | 미러 / 백업 / 배포 경유지 |
-| `genspark` | SB-Git | Genspark 자동 백업 · 배포 스냅샷 |
+**GitHub 저장소**: https://github.com/windori77-rgb/genspark-mall
 
 | 용도 | 경로 |
 |---|---|
@@ -218,13 +209,10 @@ public/static/
   icons/                 PWA 아이콘
   img/                   샘플 상품 이미지 22장
 scripts/
-  deploy-guard.mjs            `npm run deploy` 오배포 방지 가드
-  setup-gitlab-primary.sh     GitLab 주 저장소 전환 (remote 교체 + 최초 push)
+  deploy-guard.mjs       `npm run deploy` 오배포 방지 가드
 docs/
-  api.http                    REST Client 로 API 수동 테스트
-  gitlab-primary.md           GitLab 주 저장소 전환 가이드
-.gitlab-ci.yml                GitLab CI (typecheck · build — deploy job 없음)
-.vscode/                      VS Code 설정 (settings/launch/tasks/extensions)
+  api.http               REST Client 로 API 수동 테스트
+.vscode/                 VS Code 설정 (settings/launch/tasks/extensions)
 ```
 
 ---
@@ -242,21 +230,14 @@ docs/
 > ⚠️ Node 20 초반/18 에서는 `vite 8` · `wrangler 4` 가 설치 단계에서 실패합니다.
 > `nvm install 22 && nvm use 22` 로 맞춰주세요.
 
-### 시작하기 (GitLab 주 저장소 기준)
+### 시작하기
 
 ```bash
-# GitLab 이 주 저장소입니다 (아직 전환 전이면 GitHub 에서 clone)
-git clone https://gitlab.com/<본인아이디>/genspark-mall.git
+git clone https://github.com/windori77-rgb/genspark-mall.git
 cd genspark-mall
 npm install
 code .                      # VS Code 로 열기
 ```
-
-> 🔀 **아직 GitLab 전환을 안 하셨다면** → [docs/gitlab-primary.md](docs/gitlab-primary.md) 의
-> "3. 전환 실행" 을 먼저 하세요. 명령 한 줄(`scripts/setup-gitlab-primary.sh`)로 끝납니다.
->
-> 전환 후에는 `origin` = GitLab, `github` = 미러가 됩니다.
-> `--mirror-github` 옵션을 쓰면 **`git push` 한 번으로 GitLab + GitHub 동시 반영**됩니다.
 
 VS Code 가 열리면 우측 하단에 **추천 확장 설치** 알림이 뜹니다 → `Install All`.
 
