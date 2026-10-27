@@ -16,6 +16,7 @@
 ## 2. 접속 URL
 
 **운영 사이트**: https://19f07bfe-e7de-421b-ae43-9b2da204a8f9.vip.gensparksite.com
+**GitHub 저장소**: https://github.com/windori77-rgb/genspark-mall
 
 | 용도 | 경로 |
 |---|---|
