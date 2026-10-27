@@ -150,6 +150,14 @@ app.notFound((c) => {
 app.onError((err, c) => {
   console.error('[error]', err);
   if (c.req.path.startsWith('/api/')) {
+    // 운영(production)에서는 상세 메시지를 숨긴다.
+    //   DB 오류 메시지에는 "no such column: xxx" 처럼 스키마 정보가 담긴다.
+    //   응답에 실어 보내면 테이블/컬럼 구조를 추측하는 단서가 된다.
+    //   개발 편의를 위해 preview/local 에서만 detail 을 노출한다.
+    const isProd = envOf(c) === 'production';
+    if (isProd) {
+      return c.json({ error: '서버 오류가 발생했습니다.' }, 500);
+    }
     return c.json({ error: '서버 오류가 발생했습니다.', detail: String(err?.message || err) }, 500);
   }
   return c.text('Internal Server Error', 500);

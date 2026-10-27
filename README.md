@@ -477,6 +477,73 @@ Genspark 에이전트에게 **"배포해줘"** 라고 요청하세요 (승인 �
 | 미인증 `GET /api/admin/dashboard` | 401 | ✅ |
 | 운영 화면에 프리뷰 배너 노출 | 0건 (미노출이 정상) | ✅ |
 
+## 8-1. 보안 조치 이력
+
+### ✅ 2026-10-27 — SQL 조립 결함 2건 수정
+
+#### ① 동적 ORDER BY 화이트리스트 검증 (`src/routes/shop.ts`)
+
+상품 목록 정렬 파라미터 `sort` 는 사용자 입력인데, 객체 키 조회로 SQL 을 조립하고 있었다.
+
+```ts
+// ❌ 수정 전 — JS 객체는 프로토타입 체인까지 탐색한다
+ORDER BY ${orderBy[sort] || orderBy.popular}
+
+// ✅ 수정 후 — own property 만 허용
+const orderSql = Object.hasOwn(orderBy, sort) ? orderBy[sort] : orderBy.popular;
+ORDER BY ${orderSql}
+```
+
+| 입력 | 수정 전 결과 | 수정 후 |
+|---|---|---|
+| `?sort=popular` | 정상 | 정상 |
+| `?sort=bogus` | 폴백 (우연히 정상) | 폴백 |
+| `?sort=constructor` | `function Object() { [native code] }` → **SQL 구문 오류 500** | 폴백 ✅ |
+| `?sort=toString` | `function toString() { [native code] }` → **500** | 폴백 ✅ |
+| `?sort=__proto__` | `[object Object]` → **500** | 폴백 ✅ |
+| `?sort=valueOf`, `hasOwnProperty` | 500 | 폴백 ✅ |
+
+> **SQL 인젝션은 아니었습니다** (임의 SQL 주입 불가). 그러나 크래시 유발 및 오류 메시지를 통한 스키마 정보 노출 경로였다.
+
+#### ② 운영 환경 에러 상세 차단 (`src/index.tsx`)
+
+```ts
+// ❌ 수정 전 — DB 오류 메시지를 항상 응답에 포함
+return c.json({ error: '서버 오류가 발생했습니다.', detail: String(err?.message) }, 500);
+
+// ✅ 수정 후 — production 에서는 detail 제거
+const isProd = envOf(c) === 'production';
+if (isProd) return c.json({ error: '서버 오류가 발생했습니다.' }, 500);
+return c.json({ error: '서버 오류가 발생했습니다.', detail: String(err?.message) }, 500);
+```
+
+DB 오류에는 `no such column: xxx` 처럼 스키마 정보가 담기므로 운영에서 숨긴다.
+`preview` / `local` 에서는 개발 편의를 위해 계속 노출한다.
+
+#### SQL 인젝션 안전성 실측 (수정 전에도 안전했던 부분)
+
+| 검증 항목 | 결과 |
+|---|---|
+| 브라우저 노출 파일(`public/static/`) 내 SQL | **0건** (SQL 은 서버 번들에만) |
+| `?` 바인딩 플레이스홀더 | **약 246개** |
+| `.bind()` / `prepare()` 호출 | 85회 / 106회 |
+| 사용자 입력(`q`,`cat`,`badge`,`status`) 직접 보간 | **0건** (전부 `?` 바인딩) |
+| `exec()` / `.raw()` / `PRAGMA` / `ATTACH` / `sqlite_master` | **0건** |
+| `secureHeaders` 미들웨어 | 적용됨 |
+
+> **결론**: SQL 파일을 분리(MyBatis 방식)하는 것과 인젝션 방지는 별개다.
+> 보안은 은닉이 아니라 **파라미터화**와 **동적 절 조립 시 검증**에서 나온다.
+
+### 🔜 남은 보안 과제
+
+| 항목 | 상태 |
+|---|---|
+| 로그인 시도 제한 (rate limit) | 미적용 |
+| CSRF 토큰 | 미적용 (SameSite=Lax 쿠키로 부분 완화) |
+| 관리자 2FA | 미적용 |
+| `/admin` 접근 제한 (Hosted Access Rules) | 미적용 |
+| `src/repository/` 데이터 레이어 분리 | 미적용 (구조 개선 과제) |
+
 ## 9. 미구현 / 다음 단계 제안
 
 1. **실결제 연동** — 토스페이먼츠·포트원(아임포트) REST API. 서버 라우트에서 시크릿 키 사용, 프론트는 결제창 SDK 호출

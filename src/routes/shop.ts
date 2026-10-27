@@ -64,6 +64,16 @@ shop.get('/products', async (c) => {
     rating: 'p.rating DESC, p.review_count DESC',
   };
 
+  // ── 정렬 키 화이트리스트 검증 ─────────────────────────────────────────
+  // sort 는 사용자 입력이다. `orderBy[sort] || orderBy.popular` 처럼 쓰면
+  // JS 객체가 프로토타입 체인까지 탐색하므로
+  //   ?sort=constructor → "function Object() { [native code] }"
+  //   ?sort=toString    → "function toString() { [native code] }"
+  //   ?sort=__proto__   → "[object Object]"
+  // 가 SQL 에 그대로 들어가 구문 오류(500)를 유발한다.
+  // Object.hasOwn 으로 'own property' 만 허용해 프로토타입 오염 경로를 차단한다.
+  const orderSql = Object.hasOwn(orderBy, sort) ? orderBy[sort] : orderBy.popular;
+
   const wsql = where.join(' AND ');
   const totalRow: any = await db.prepare(
     `SELECT COUNT(*) AS n FROM products p JOIN categories c ON c.id = p.category_id WHERE ${wsql}`
@@ -74,7 +84,7 @@ shop.get('/products', async (c) => {
             p.rating, p.review_count, p.sales_count, p.stock, p.shipping_fee, c.name AS category_name, c.slug AS category_slug
        FROM products p JOIN categories c ON c.id = p.category_id
       WHERE ${wsql}
-      ORDER BY ${orderBy[sort] || orderBy.popular}
+      ORDER BY ${orderSql}
       LIMIT ? OFFSET ?`
   ).bind(...binds, limit, (page - 1) * limit).all();
 
