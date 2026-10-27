@@ -1,0 +1,86 @@
+# ─────────────────────────────────────────────────────────────────────────────
+# GitLab CI — MOA SHOP
+# ─────────────────────────────────────────────────────────────────────────────
+#
+# GitLab 이 주 저장소이므로 이 파이프라인이 프로젝트의 공식 CI 입니다.
+# (배포는 CI 가 아니라 Genspark 호스팅이 담당합니다 — 아래 deploy 스테이지 주석 참고)
+#
+# 실행되는 검사
+#   1. typecheck : tsc --noEmit           (타입 오류 0 요구)
+#   2. build     : vite build → dist/     (번들 크기 리포트)
+#
+# GitLab 무료 플랜에서 바로 사용 가능합니다 (Shared Runners).
+# ─────────────────────────────────────────────────────────────────────────────
+
+stages:
+  - verify
+  - build
+
+# 모든 job 공통 — npm 캐시를 job 간 공유
+default:
+  image: node:22-bookworm
+  cache:
+    key:
+      files:
+        - package-lock.json
+    paths:
+      - .npm/
+
+variables:
+  # wrangler 가 CI 환경에서 대화형 프롬프트를 띄우지 않도록
+  CI: "true"
+  WRANGLER_SEND_METRICS: "false"
+  # npm 캐시를 프로젝트 내부로 고정 (캐시 설정과 경로 일치)
+  npm_config_cache: "$CI_PROJECT_DIR/.npm"
+
+# ── 1. 타입 검사 ─────────────────────────────────────────────────────────────
+typecheck:
+  stage: verify
+  script:
+    - node -v
+    - npm -v
+    - npm ci --prefer-offline --no-audit --no-fund
+    - npm run typecheck
+  rules:
+    - if: $CI_PIPELINE_SOURCE == "merge_request_event"
+    - if: $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH
+    - if: $CI_COMMIT_BRANCH   # 기능 브랜치 push 시에도 실행
+
+# ── 2. 프로덕션 빌드 ─────────────────────────────────────────────────────────
+build:
+  stage: build
+  script:
+    - npm ci --prefer-offline --no-audit --no-fund
+    - npm run build
+    # 산출물 크기를 job 로그에 남겨 회귀를 눈으로 확인할 수 있게 한다
+    - echo "── dist/ 산출물 ──"
+    - ls -lh dist/ || true
+    - du -sh dist/ || true
+    - echo "── dist/_worker.js 크기 ──"
+    - wc -c dist/_worker.js 2>/dev/null || echo "(_worker.js 없음)"
+  artifacts:
+    name: "dist-$CI_COMMIT_SHORT_SHA"
+    paths:
+      - dist/
+    expire_in: 1 week
+    # 배포는 Genspark 호스팅이 수행하므로 산출물은 확인용이다
+  rules:
+    - if: $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH
+    - if: $CI_PIPELINE_SOURCE == "merge_request_event"
+
+# ─────────────────────────────────────────────────────────────────────────────
+# ⛔ deploy 스테이지를 여기에 추가하지 마세요
+# ─────────────────────────────────────────────────────────────────────────────
+#
+# 이 프로젝트의 운영 배포는 **Genspark 호스팅**이 담당합니다.
+#
+#   git push (GitLab)  ──▶  Genspark 에이전트에게 "배포해줘"
+#                            └─▶ gsk hosted deploy (승인) ──▶ 운영 사이트
+#
+# GitLab CI 에서 직접 `wrangler pages deploy` 를 실행하면
+# 고객님 개인 Cloudflare 계정으로 유령 배포가 생깁니다.
+# (자세한 이유: README 8장 / scripts/deploy-guard.mjs)
+#
+# 정적 검사만 추가하고 싶다면 verify 스테이지에 job 을 늘리세요.
+# 예) eslint, prettier --check, 의존성 취약점 검사 등
+# ─────────────────────────────────────────────────────────────────────────────
