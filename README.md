@@ -308,12 +308,27 @@ Genspark 에이전트에게 **"배포해줘"** 라고 요청하세요 (승인 �
 
 ## 8. 배포
 
-- **플랫폼**: Cloudflare Workers (Genspark 호스팅)
+- **플랫폼**: Cloudflare Workers (Genspark 호스팅, Workers for Platform / `user_website` 디스패치 네임스페이스)
 - **운영 URL**: https://19f07bfe-e7de-421b-ae43-9b2da204a8f9.vip.gensparksite.com
 - **방법**: `gsk hosted deploy` (D1 자동 프로비저닝)
-- **바인딩**: `DB` (D1) 1개 — KV/크론 미사용
-- **배포 상태**: ✅ 배포 완료 (2026-10-26). D1 자동 초기화 확인: 상품 28 / 카테고리 6 / 쿠폰 3 / 관리자 1
+- **바인딩**: `DB` (D1) 1개 + `ASSETS` — KV / R2 / 크론 `triggers` 미사용 (호스팅 배포 지원 범위 내)
+- **배포 상태**: ✅ **최신 배포 완료 (2026-10-27)** — DB 분리(프록시 제거) 반영
+  - Worker Version ID: `381f0388-dd8c-4980-b3a1-7533ae3f51f7`
+  - 업로드 크기: 120.51 KiB / gzip 31.95 KiB (에셋 35개)
+  - 운영 D1(`19f07bfe-...-db`) 데이터 **보존 확인**: 주문 6 / 상품 28 / 회원 2 / 리뷰 12 / 카테고리 6
 - **재배포**: 코드 수정 후 `npm run build` → `git commit` → `gsk hosted deploy` (승인 필요)
+  - ⚠️ `--rebuild_db` 는 **절대 사용 금지** (운영 D1 데이터 전부 삭제됨)
+
+### 배포 후 검증 체크리스트 (2026-10-27 실시)
+| 항목 | 기대값 | 결과 |
+|---|---|---|
+| `GET /api/health` | `{"env":"production","dataSource":"production"}` | ✅ |
+| 고객 홈 `/` | 200 | ✅ |
+| 관리자 `/admin` | 200 | ✅ |
+| 상품 API `/api/shop/products` | total 28 | ✅ |
+| 관리자 로그인 `POST /api/admin/login` | 200 | ✅ |
+| 미인증 `GET /api/admin/dashboard` | 401 | ✅ |
+| 운영 화면에 프리뷰 배너 노출 | 0건 (미노출이 정상) | ✅ |
 
 ## 9. 미구현 / 다음 단계 제안
 
