@@ -517,13 +517,14 @@ Genspark 에이전트에게 **"배포해줘"** 라고 요청하세요 (승인 �
 - **운영 URL**: https://19f07bfe-e7de-421b-ae43-9b2da204a8f9.vip.gensparksite.com
 - **방법**: `gsk hosted deploy` (D1 자동 프로비저닝)
 - **바인딩**: `DB` (D1) 1개 + `ASSETS` — KV / R2 / 크론 `triggers` 미사용 (호스팅 배포 지원 범위 내)
-- **배포 상태**: ✅ **최신 배포 완료 (2026-10-27)** — 보안 수정(ORDER BY 화이트리스트 · 에러 상세 차단) 반영
-  - Worker Version ID: `b313c26c-03a3-4337-9401-f31c11b42a2c`
-  - 업로드 크기: 120.66 KiB / gzip 31.98 KiB (에셋 35개)
+- **배포 상태**: ✅ **최신 배포 완료 (2026-11-03)** — 3계층 리팩터링(routes/service/repository) + 세션 만료 버그 수정
+  - Worker Version ID: `63b454cb-558d-4c7f-bfa3-c987b394e872`
+  - 업로드 크기: 133.83 KiB / gzip 35.50 KiB (에셋 35개)
   - 운영 D1(`19f07bfe-...-db`) 데이터 **보존 확인**: 주문 6 / 상품 28 / 회원 2 / 리뷰 12
 - **배포 이력**
   | 날짜 | Version ID | 내용 |
   |---|---|---|
+  | 2026-11-03 | `63b454cb` | **3계층 구조 분리** (DB 소스를 repository 로 이동) + 세션 만료 버그 수정 |
   | 2026-10-27 | `b313c26c` | 보안 수정 (ORDER BY 화이트리스트 + 운영 에러 상세 차단) |
   | 2026-10-27 | `381f0388` | DB 분리 (프리뷰→운영 프록시 제거) |
 - **재배포**: 코드 수정 후 `npm run build` → `git commit` → `gsk hosted deploy` (승인 필요)
