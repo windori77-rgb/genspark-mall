@@ -4,6 +4,7 @@ import { secureHeaders } from 'hono/secure-headers';
 import shop from './routes/shop';
 import admin from './routes/admin';
 import { resolveEnvName, resolveDataSource, PRODUCTION_URL, type AppEnv } from './lib/env';
+import { apiErrorResponse } from './lib/http';
 
 type Bindings = { DB: D1Database; APP_ENV?: string };
 
@@ -148,18 +149,13 @@ app.notFound((c) => {
 });
 
 app.onError((err, c) => {
-  console.error('[error]', err);
   if (c.req.path.startsWith('/api/')) {
-    // 운영(production)에서는 상세 메시지를 숨긴다.
-    //   DB 오류 메시지에는 "no such column: xxx" 처럼 스키마 정보가 담긴다.
-    //   응답에 실어 보내면 테이블/컬럼 구조를 추측하는 단서가 된다.
-    //   개발 편의를 위해 preview/local 에서만 detail 을 노출한다.
-    const isProd = envOf(c) === 'production';
-    if (isProd) {
-      return c.json({ error: '서버 오류가 발생했습니다.' }, 500);
-    }
-    return c.json({ error: '서버 오류가 발생했습니다.', detail: String(err?.message || err) }, 500);
+    // 서비스 계층이 던진 HttpError(400/401/403/404/409)는 그 상태코드로,
+    // 예상 외 예외는 500 으로 변환한다. 운영에서는 상세 메시지를 숨긴다
+    // (DB 오류 메시지에 스키마 정보가 담기기 때문). lib/http.ts 참고.
+    return apiErrorResponse(c, err);
   }
+  console.error('[error]', err);
   return c.text('Internal Server Error', 500);
 });
 

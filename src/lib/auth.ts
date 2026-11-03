@@ -1,5 +1,13 @@
 import { getCookie, setCookie, deleteCookie } from 'hono/cookie';
 import type { Context } from 'hono';
+import * as sessionsRepo from '../repository/sessions';
+
+/**
+ * 인증 유틸 — 쿠키/해시 담당.
+ *
+ * ⚠️ 계층 규칙: 이 파일에는 **SQL 이 없다**. 세션 조회는
+ *    repository/sessions.ts 에 위임한다. (3계층 분리)
+ */
 
 const enc = new TextEncoder();
 
@@ -21,7 +29,7 @@ export async function hashPassword(password: string, salt?: string): Promise<str
   const bits = await crypto.subtle.deriveBits(
     { name: 'PBKDF2', salt: enc.encode(s), iterations: 12000, hash: 'SHA-256' },
     key,
-    256
+    256,
   );
   return `${s}$${b64(bits)}`;
 }
@@ -30,6 +38,7 @@ export async function verifyPassword(password: string, stored: string): Promise<
   const salt = stored.split('$')[0];
   const candidate = await hashPassword(password, salt);
   if (candidate.length !== stored.length) return false;
+  // 타이밍 공격 완화 — 길이가 같으면 전 구간을 비교한다
   let diff = 0;
   for (let i = 0; i < candidate.length; i++) diff |= candidate.charCodeAt(i) ^ stored.charCodeAt(i);
   return diff === 0;
@@ -56,27 +65,18 @@ export function clearAdminSession(c: Context) {
   deleteCookie(c, ADMIN_COOKIE, { path: '/' });
 }
 
-/** 로그인 사용자 조회 (없으면 null) */
+/** 로그인 사용자 조회 (없으면 null) — SQL 은 sessions 저장소가 담당 */
 export async function currentUser(c: Context): Promise<any | null> {
   const token = getCookie(c, SESSION_COOKIE);
   if (!token) return null;
-  const row = await (c.env as any).DB.prepare(
-    `SELECT u.id, u.email, u.name, u.phone, u.created_at
-       FROM user_sessions s JOIN users u ON u.id = s.user_id
-      WHERE s.token = ? AND s.expires_at > datetime('now')`
-  ).bind(token).first();
-  return row || null;
+  return sessionsRepo.findUserByToken((c.env as any).DB, token);
 }
 
+/** 로그인 관리자 조회 (없으면 null) */
 export async function currentAdmin(c: Context): Promise<any | null> {
   const token = getCookie(c, ADMIN_COOKIE);
   if (!token) return null;
-  const row = await (c.env as any).DB.prepare(
-    `SELECT a.id, a.username, a.name
-       FROM admin_sessions s JOIN admin_users a ON a.id = s.admin_id
-      WHERE s.token = ? AND s.expires_at > datetime('now')`
-  ).bind(token).first();
-  return row || null;
+  return sessionsRepo.findAdminByToken((c.env as any).DB, token);
 }
 
 /** 비로그인 장바구니 식별키 (없으면 발급) */
@@ -87,6 +87,18 @@ export function cartKey(c: Context): string {
     setCookie(c, CART_COOKIE, key, cookieOpts(60 * 60 * 24 * 180));
   }
   return key;
+}
+
+/** 현재 요청의 장바구니 키. 로그인 했으면 회원 키, 아니면 비회원 키 */
+export function resolveCartKey(c: Context, user: any | null): string {
+  if (user) return `u:${user.id}`;
+  return `g:${cartKey(c)}`;
+}
+
+/** 비회원 쿠키의 장바구니 키 (로그인/가입 시 병합용, 없으면 null) */
+export function guestCartKey(c: Context): string | null {
+  const g = getCookie(c, CART_COOKIE);
+  return g ? `g:${g}` : null;
 }
 
 export function newToken(): string {

@@ -1,5 +1,14 @@
 import { SCHEMA_SQL } from './schema';
 import { seedDatabase } from './seed';
+import { isEmpty } from '../repository/products';
+
+/**
+ * DB 부트스트랩.
+ *
+ *  · 스키마 생성(DDL)과 초기 시드 데이터만 담당한다.
+ *  · 런타임 조회 SQL 은 repository/* 가 갖는다 (3계층 분리).
+ *  · 콜드스타트당 1회만 실행하고 Promise 를 캐시한다.
+ */
 
 let ready: Promise<void> | null = null;
 
@@ -39,8 +48,7 @@ async function init(db: D1Database) {
   }
 
   // 2) 최초 1회 시드
-  const row: any = await db.prepare('SELECT COUNT(*) AS n FROM products').first();
-  if (!row || Number(row.n) === 0) {
+  if (await isEmpty(db)) {
     await seedDatabase(db);
   }
 }
@@ -55,12 +63,3 @@ export function ensureDb(db: D1Database): Promise<void> {
   }
   return ready;
 }
-
-export function json(data: any, status = 200) {
-  return new Response(JSON.stringify(data), {
-    status,
-    headers: { 'content-type': 'application/json; charset=utf-8', 'cache-control': 'no-store' },
-  });
-}
-
-export const won = (n: number) => `${Number(n || 0).toLocaleString('ko-KR')}원`;
