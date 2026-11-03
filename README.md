@@ -119,6 +119,64 @@
 
 ## 5. 데이터 아키텍처
 
+### 5-1. 3계층 구조 (DB 소스 분리)
+
+SQL 은 **오직 `src/repository/` 에만** 존재합니다. 라우트에는 SQL 이 한 줄도 없습니다.
+
+```
+요청 → routes/    (HTTP)      파싱 · 서비스 호출 · 직렬화 · 쿠키
+         ↓
+       service/   (비즈니스)   금액계산 · 재고판단 · 상태전이 · 권한검사
+         ↓
+       repository/(데이터)     SQL 유일 거주지 · D1Database 주입
+         ↓
+       Cloudflare D1
+```
+
+| 계층 | 디렉터리 | 책임 | 금지 사항 |
+|---|---|---|---|
+| 표현 | `src/routes/` | 쿼리/바디 파싱, 응답 직렬화, 쿠키 읽기·쓰기 | SQL, 금액 계산 |
+| 비즈니스 | `src/service/` | 검증, 금액·배송비·쿠폰 계산, 재고 복구 판단, 상태 전이 | SQL, `Context` 접근 |
+| 데이터 | `src/repository/` | SQL 실행, 행 → 타입 매핑 | 비즈니스 판단 |
+
+**오류 전달 방식**: 서비스는 `HttpError(400/401/403/404/409)` 를 던지고, 라우트의 `onError`(`lib/http.ts`)가 `{ error }` JSON 으로 변환합니다. 예상 외 예외만 500 이 됩니다.
+
+**주요 파일**
+
+```
+src/lib/sql.ts        Where 빌더(<where>/<if>) · pickOrder(<choose>) · 정규화 유틸
+src/lib/http.ts       HttpError · json() · apiErrorResponse()
+src/repository/       19개 파일 — products, orders, cart, users, sessions,
+                      coupons, banners, categories, reviews, wishlist,
+                      addresses, settings, notices, adminUsers, types
+src/service/          11개 파일 — catalog, auth, cart, orders, coupons,
+                      addresses, wishlist, adminAuth, adminDashboard,
+                      adminProducts, adminCatalog
+```
+
+### 5-2. MyBatis 를 쓰지 않은 이유
+
+**MyBatis 는 이 런타임에서 실행할 수 없습니다.** Java/JVM 프레임워크이기 때문입니다.
+
+| MyBatis 가 요구하는 것 | Cloudflare Workers 현실 |
+|---|---|
+| JVM | workerd (V8 isolate) |
+| XML 매퍼 파일 파싱 | 런타임 파일시스템 없음 (`fs` 불가) |
+| 상주 `SqlSessionFactory` | 요청 단위 실행, 상주 프로세스 없음 |
+| JDBC 드라이버 | D1 은 HTTP 바인딩 API |
+
+대신 MyBatis 의 **개념**을 TypeScript 로 동일하게 구현했습니다.
+
+| MyBatis | 이 프로젝트 |
+|---|---|
+| `<where>` + `<if test>` | `Where` 빌더 — `w.and(cond, sql, ...binds)` |
+| `<choose>` / `<when>` | `pickOrder(map, key, fallback)` 화이트리스트 |
+| `#{param}` 바인딩 | `?` 플레이스홀더 + `.bind()` |
+| `<mapper>` XML | `repository/*.ts` |
+| Mapper 인터페이스 | `service/*.ts` |
+
+동적 SQL 은 **조건이 참일 때만 절과 바인딩을 함께 추가**하므로 SQL 조각과 파라미터 개수가 어긋나지 않습니다.
+
 **저장소**: Cloudflare D1 (SQLite). 스키마는 최초 요청 시 자동 생성(`CREATE TABLE IF NOT EXISTS`), 상품이 0개면 샘플 데이터 자동 시딩.
 
 | 테이블 | 설명 |
